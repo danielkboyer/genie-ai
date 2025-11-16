@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { createGame, getTodayWord } from "@/lib/db-operations";
+import { createGame } from "@/lib/db-operations";
 
 export default async function handler(
   req: NextApiRequest,
@@ -20,8 +20,7 @@ export default async function handler(
   }
 
   try {
-    const secretWord = await getTodayWord();
-    const game = await createGame(playerId, mode, secretWord);
+    const game = await createGame(playerId, mode);
 
     // Don't send secret word to client
     const { secretWord: _, ...gameWithoutSecret } = game;

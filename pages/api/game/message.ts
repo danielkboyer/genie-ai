@@ -42,16 +42,20 @@ export default async function handler(
       return res.status(400).json({ error: "Not your turn" });
     }
 
+    // Use the secret word stored with the game
+    const secretWord = game.secretWord;
+
     let aiResponse: string | undefined;
     let isCorrectGuess = false;
 
     if (type === "guess") {
-      // Check if guess is correct
-      isCorrectGuess = content.toLowerCase().trim() === game.secretWord.toLowerCase().trim();
+      // Check if guess is correct (remove trailing punctuation like ?)
+      const cleanedGuess = content.toLowerCase().trim().replace(/[?!.,:;]+$/, '');
+      isCorrectGuess = cleanedGuess === secretWord.toLowerCase().trim();
       aiResponse = isCorrectGuess ? "Correct!" : "Incorrect!";
     } else {
       // Get AI response for question
-      aiResponse = await generateGameAIResponse(content, game.secretWord);
+      aiResponse = await generateGameAIResponse(content, secretWord);
     }
 
     const message: GameMessage = {
@@ -93,11 +97,11 @@ export default async function handler(
         // The AI returns just the word when guessing
         const aiGuessWord = aiQuestion.trim();
 
-        aiCorrectGuess = aiGuessWord.toLowerCase() === game.secretWord.toLowerCase();
+        aiCorrectGuess = aiGuessWord.toLowerCase() === secretWord.toLowerCase();
         aiAiResponse = aiCorrectGuess ? "Correct!" : "Incorrect!";
       } else {
         // Get Game AI response to Player AI's question
-        aiAiResponse = await generateGameAIResponse(aiQuestion, game.secretWord);
+        aiAiResponse = await generateGameAIResponse(aiQuestion, secretWord);
       }
 
       aiMessage = {

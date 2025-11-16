@@ -1,4 +1,5 @@
 import { getSession } from "./neo4j";
+import { words } from "./words";
 
 export interface GameMessage {
   id: string;
@@ -12,7 +13,7 @@ export interface GameMessage {
 export interface Game {
   id: string;
   code?: string;
-  secretWord: string; // The one secret word both are trying to guess
+  secretWord: string; // The word that was active when the game started
   date: string;
   mode: "ai" | "friend";
   status: "active" | "completed";
@@ -24,41 +25,47 @@ export interface Game {
   createdAt: number;
 }
 
-// Get or create today's word
-export async function getTodayWord(): Promise<string> {
-  const session = await getSession();
-  try {
-    const today = new Date().toISOString().split("T")[0];
+// Get today's word (deterministic based on Mountain Time date)
+export function getTodaysWord(): string {
+  const now = new Date();
 
-    const result = await session.run(
-      `
-      MERGE (d:DailyWord {date: $date})
-      ON CREATE SET d.word = $word
-      RETURN d.word as word
-      `,
-      {
-        date: today,
-        word: generateRandomWord()
-      }
-    );
+  // Convert current time to Mountain Time
+  const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
 
-    return result.records[0].get("word");
-  } finally {
-    await session.close();
-  }
+  // Get the Mountain Time date components
+  const mtYear = mountainTime.getFullYear();
+  const mtMonth = mountainTime.getMonth();
+  const mtDay = mountainTime.getDate();
+
+  // Start date: November 16, 2025 at midnight Mountain Time
+  const startDate = new Date(2025, 10, 16); // Month is 0-indexed, so 10 = November
+
+  // Current date at midnight MT
+  const currentMT = new Date(mtYear, mtMonth, mtDay);
+
+  const diff = currentMT.getTime() - startDate.getTime();
+  const oneDay = 1000 * 60 * 60 * 24;
+  const daysSinceStart = Math.floor(diff / oneDay);
+
+  // Use modulo to cycle through words based on days since start
+  const wordIndex = daysSinceStart % words.length;
+
+  return words[wordIndex];
 }
 
 // Create a new game
 export async function createGame(
   playerId: string,
-  mode: "ai" | "friend",
-  secretWord: string
+  mode: "ai" | "friend"
 ): Promise<Game> {
   const session = await getSession();
   try {
     const gameId = generateId();
     const code = mode === "friend" ? generateGameCode() : null;
-    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+    const today = mountainTime.toISOString().split("T")[0];
+    const secretWord = getTodaysWord(); // Get the word for today and store it with the game
 
     const query = mode === "friend"
       ? `
@@ -131,6 +138,35 @@ export async function createGame(
 export async function joinGame(code: string, playerId: string): Promise<Game | null> {
   const session = await getSession();
   try {
+    // First check if player is already in the game (rejoining)
+    const rejoiningResult = await session.run(
+      `
+      MATCH (g:Game {code: $code, status: 'active'})
+      WHERE g.player1Id = $playerId OR g.player2Id = $playerId
+      RETURN g
+      `,
+      { code, playerId }
+    );
+
+    if (rejoiningResult.records.length > 0) {
+      // Player is rejoining
+      const game = rejoiningResult.records[0].get("g").properties;
+      return {
+        id: game.id,
+        code: game.code,
+        secretWord: game.secretWord,
+        date: game.date,
+        mode: game.mode,
+        status: game.status,
+        messages: [],
+        player1Id: game.player1Id,
+        player2Id: game.player2Id,
+        currentTurn: game.currentTurn,
+        createdAt: Number(game.createdAt),
+      };
+    }
+
+    // Player is joining for the first time as player2
     const result = await session.run(
       `
       MATCH (g:Game {code: $code, status: 'active'})
@@ -288,14 +324,3 @@ function generateGameCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-async function generateRandomWord(): Promise<string> {
-  // For now, return a random word from a list
-  // You can enhance this to use an API or larger word list
-  const words = [
-    "elephant", "computer", "guitar", "rainbow", "pizza",
-    "astronaut", "mountain", "butterfly", "telephone", "umbrella",
-    "chocolate", "dinosaur", "symphony", "volcano", "penguin",
-    "telescope", "hurricane", "champagne", "submarine", "kangaroo"
-  ];
-  return words[Math.floor(Math.random() * words.length)];
-}

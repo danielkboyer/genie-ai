@@ -8,6 +8,26 @@ import { Button } from "@/components/ui/button";
 import { Copy, Trophy, Clock } from "lucide-react";
 import { Game, GameMessage } from "@/lib/db-operations";
 
+function getTimeUntilNextWord(): string {
+  const now = new Date();
+
+  // Get current time in Mountain Time
+  const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+
+  // Get tomorrow at midnight Mountain Time
+  const tomorrow = new Date(mountainTime);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+
+  // Calculate difference
+  const diff = tomorrow.getTime() - mountainTime.getTime();
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+  return `${hours}h ${minutes}m`;
+}
+
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
@@ -21,6 +41,7 @@ export default function GamePage() {
     return "";
   });
   const [copied, setCopied] = useState(false);
+  const [timeUntilNext, setTimeUntilNext] = useState(getTimeUntilNextWord());
 
   const fetchGame = async () => {
     try {
@@ -29,6 +50,21 @@ export default function GamePage() {
 
       if (response.ok) {
         setGame(data.game);
+
+        // If game completed (win or loss), save to localStorage (Mountain Time)
+        if (data.game.status === "completed" && typeof window !== "undefined") {
+          const now = new Date();
+          const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+          const today = mountainTime.toISOString().split("T")[0];
+          localStorage.setItem("lastPlayedDate", today);
+          localStorage.setItem("lastPlayedGameId", gameId);
+
+          // Also track if they won
+          if (data.game.winnerId === playerId) {
+            localStorage.setItem("lastWonDate", today);
+            localStorage.setItem("lastWonGameId", gameId);
+          }
+        }
       } else {
         alert(data.error || "Failed to load game");
         router.push("/");
@@ -45,11 +81,23 @@ export default function GamePage() {
   useEffect(() => {
     if (gameId) {
       fetchGame();
-      // Poll for updates every 3 seconds
-      const interval = setInterval(fetchGame, 3000);
+      // Poll for updates every 3 seconds, but stop if game is completed
+      const interval = setInterval(() => {
+        if (game?.status !== "completed") {
+          fetchGame();
+        }
+      }, 3000);
       return () => clearInterval(interval);
     }
-  }, [gameId]);
+  }, [gameId, game?.status]);
+
+  // Update countdown timer every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeUntilNext(getTimeUntilNextWord());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
 
   const handleMessageSent = (
     message: GameMessage,
@@ -59,9 +107,11 @@ export default function GamePage() {
     setGame((prev) => {
       if (!prev) return prev;
 
-      // If player won, save to localStorage
+      // If player won, save to localStorage (Mountain Time)
       if (gameStatus === "completed" && winnerId === playerId && typeof window !== "undefined") {
-        const today = new Date().toISOString().split("T")[0];
+        const now = new Date();
+        const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+        const today = mountainTime.toISOString().split("T")[0];
         localStorage.setItem("lastWonDate", today);
         localStorage.setItem("lastWonGameId", gameId);
       }
@@ -121,7 +171,7 @@ export default function GamePage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  {game.code && !game.player2Id && (
+                  {game.code && (
                     <Button
                       onClick={copyGameCode}
                       variant="outline"
@@ -162,20 +212,22 @@ export default function GamePage() {
         {isCompleted && (
           <Card className="mb-4 border-2 border-purple-500">
             <CardContent className="pt-6">
-              <div className="text-center">
-                <Trophy className="h-12 w-12 mx-auto mb-3 text-yellow-500" />
-                <h2 className="text-2xl font-bold mb-2">
+              <div className="text-center space-y-3">
+                <Trophy className="h-12 w-12 mx-auto text-yellow-500" />
+                <h2 className="text-2xl font-bold">
                   {isWinner ? "You Won!" : "You Lost!"}
                 </h2>
-                <p className="text-gray-600 mb-4">
+                <p className="text-gray-600">
                   The secret word was:{" "}
                   <span className="font-bold text-purple-600">
                     {game.secretWord}
                   </span>
                 </p>
-                <Button onClick={() => router.push("/")} size="lg">
-                  Play Again
-                </Button>
+                <div className="pt-2 border-t border-gray-200 mt-4">
+                  <p className="text-sm text-gray-500">
+                    Next word in: <span className="font-semibold text-purple-600">{timeUntilNext}</span>
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -189,6 +241,7 @@ export default function GamePage() {
             messages={game.messages || []}
             isMyTurn={isMyTurn}
             gameStatus={game.status || "active"}
+            gameMode={game.mode}
             onMessageSent={handleMessageSent}
           />
         </Card>

@@ -7,6 +7,9 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Genie AI - Word Guessing Game",
   description: "Guess the daily word by asking questions to Genie AI",
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({

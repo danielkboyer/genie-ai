@@ -7,6 +7,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Sparkles, Trophy } from "lucide-react";
 
+function getTimeUntilNextWord(): string {
+  const now = new Date();
+
+  // Get current time in Mountain Time
+  const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+
+  // Get tomorrow at midnight Mountain Time
+  const tomorrow = new Date(mountainTime);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+
+  // Calculate difference
+  const diff = tomorrow.getTime() - mountainTime.getTime();
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+  return `${hours}h ${minutes}m`;
+}
+
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -25,19 +45,30 @@ export default function Home() {
   });
   const [hasWonToday, setHasWonToday] = useState(false);
   const [todayGameId, setTodayGameId] = useState<string | null>(null);
+  const [timeUntilNext, setTimeUntilNext] = useState(getTimeUntilNextWord());
 
   useEffect(() => {
-    // Check if user has won today
+    // Check if user has played today (Mountain Time)
     if (typeof window !== "undefined") {
-      const today = new Date().toISOString().split("T")[0];
-      const wonDate = localStorage.getItem("lastWonDate");
-      const gameId = localStorage.getItem("lastWonGameId");
+      const now = new Date();
+      const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+      const today = mountainTime.toISOString().split("T")[0];
+      const playedDate = localStorage.getItem("lastPlayedDate");
+      const gameId = localStorage.getItem("lastPlayedGameId");
 
-      if (wonDate === today && gameId) {
+      if (playedDate === today && gameId) {
         setHasWonToday(true);
         setTodayGameId(gameId);
       }
     }
+  }, []);
+
+  // Update countdown timer every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeUntilNext(getTimeUntilNextWord());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
   }, []);
 
   const handlePlayAI = async () => {
@@ -138,8 +169,13 @@ export default function Home() {
             <>
               <div className="text-center py-6 space-y-4">
                 <Trophy className="h-16 w-16 mx-auto text-yellow-500" />
-                <h3 className="text-2xl font-bold text-green-600">You beat today's word!</h3>
+                <h3 className="text-2xl font-bold text-green-600">You played today's word!</h3>
                 <p className="text-gray-600">Come back tomorrow for a new word</p>
+                <div className="py-3 px-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <p className="text-sm text-gray-600">
+                    Next word in: <span className="font-semibold text-purple-600">{timeUntilNext}</span>
+                  </p>
+                </div>
                 <Button
                   onClick={() => router.push(`/game/${todayGameId}`)}
                   variant="outline"
@@ -154,7 +190,7 @@ export default function Home() {
               <Button
                 onClick={handlePlayAI}
                 disabled={loading}
-                className="w-full h-14 text-lg font-semibold"
+                className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all"
                 size="lg"
               >
                 {loading ? "Starting..." : "Play vs AI"}
@@ -164,7 +200,7 @@ export default function Home() {
                 onClick={handlePlayFriend}
                 disabled={loading}
                 variant="outline"
-                className="w-full h-12"
+                className="w-full h-12 border-2 border-purple-600 text-purple-600 hover:bg-purple-50 font-semibold shadow-md hover:shadow-lg transition-all"
                 size="lg"
               >
                 Play with Friend
@@ -172,10 +208,10 @@ export default function Home() {
 
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
+                  <span className="w-full border-t border-gray-300" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-muted-foreground">Or</span>
+                  <span className="bg-white px-3 py-1 text-gray-500 font-medium rounded-full border border-gray-200">Or</span>
                 </div>
               </div>
 
@@ -206,7 +242,7 @@ export default function Home() {
                     <Button
                       onClick={handleJoinGame}
                       disabled={loading || gameCode.length !== 6}
-                      className="flex-1"
+                      className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all"
                     >
                       Join Game
                     </Button>
@@ -217,6 +253,7 @@ export default function Home() {
                       }}
                       variant="outline"
                       disabled={loading}
+                      className="border-2 border-gray-300 hover:bg-gray-50"
                     >
                       Cancel
                     </Button>
@@ -228,7 +265,7 @@ export default function Home() {
                 <h3 className="font-semibold text-sm mb-2">How to Play:</h3>
                 <ul className="text-sm text-gray-600 space-y-1">
                   <li>• Ask yes/no questions to narrow down the word</li>
-                  <li>• The AI will respond: yes, no, sometimes, maybe, or not relevant</li>
+                  <li>• Responses: yes, no, sometimes, probably, probably not, unknown, depends, or irrelevant</li>
                   <li>• Take turns with your opponent</li>
                   <li>• First to guess correctly wins!</li>
                 </ul>

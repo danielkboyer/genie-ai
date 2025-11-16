@@ -13,6 +13,7 @@ interface GameChatProps {
   messages: GameMessage[];
   isMyTurn: boolean;
   gameStatus: "active" | "completed";
+  gameMode?: "ai" | "friend";
   onMessageSent: (message: GameMessage, gameStatus: string, winnerId?: string) => void;
 }
 
@@ -22,6 +23,7 @@ export function GameChat({
   messages,
   isMyTurn,
   gameStatus,
+  gameMode,
   onMessageSent,
 }: GameChatProps) {
   const [input, setInput] = useState("");
@@ -37,8 +39,11 @@ export function GameChat({
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only scroll when messages length changes (new message added)
+    if (messages.length > 0) {
+      scrollToBottom();
+    }
+  }, [messages.length]);
 
   // Track when new messages arrive to hide loading indicators
   useEffect(() => {
@@ -51,13 +56,21 @@ export function GameChat({
         setLoading(false);
         setPendingQuestion(null);
         // If in AI mode and we haven't gotten the AI's question yet, show AI thinking
-        if (gameStatus === "active" && !hasPlayerAIMessage) {
+        // BUT only if game is still active (not completed) AND we're in AI mode
+        if (gameMode === "ai" && gameStatus === "active" && !hasPlayerAIMessage) {
           setWaitingForAI(true);
         }
       }
 
       // If we got the Player AI's message, stop showing AI thinking
       if (waitingForAI && hasPlayerAIMessage) {
+        setWaitingForAI(false);
+      }
+
+      // If game completed, clear all loading states
+      if (gameStatus === "completed") {
+        setLoading(false);
+        setPendingQuestion(null);
         setWaitingForAI(false);
       }
 
@@ -148,7 +161,7 @@ export function GameChat({
             <div className="max-w-[75%] rounded-2xl px-4 py-2 shadow-sm bg-orange-100 text-gray-900 rounded-bl-md">
               <div className="flex items-center gap-2">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
-                <span className="text-sm text-gray-600">AI is thinking...</span>
+                <span className="text-sm text-gray-600">Opponent is thinking...</span>
               </div>
             </div>
           </div>
@@ -164,7 +177,7 @@ export function GameChat({
               type="button"
               variant={isQuestion ? "default" : "outline"}
               onClick={() => setIsQuestion(true)}
-              className="flex-1"
+              className={`flex-1 ${isQuestion ? 'ring-2 ring-purple-600 ring-offset-2' : ''}`}
               size="sm"
             >
               Ask Question
@@ -173,7 +186,7 @@ export function GameChat({
               type="button"
               variant={!isQuestion ? "default" : "outline"}
               onClick={() => setIsQuestion(false)}
-              className="flex-1"
+              className={`flex-1 ${!isQuestion ? 'ring-2 ring-purple-600 ring-offset-2' : ''}`}
               size="sm"
             >
               Guess Word
