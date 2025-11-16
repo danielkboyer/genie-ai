@@ -20,6 +20,7 @@ export default function GamePage() {
     }
     return "";
   });
+  const [copied, setCopied] = useState(false);
 
   const fetchGame = async () => {
     try {
@@ -57,6 +58,14 @@ export default function GamePage() {
   ) => {
     setGame((prev) => {
       if (!prev) return prev;
+
+      // If player won, save to localStorage
+      if (gameStatus === "completed" && winnerId === playerId && typeof window !== "undefined") {
+        const today = new Date().toISOString().split("T")[0];
+        localStorage.setItem("lastWonDate", today);
+        localStorage.setItem("lastWonGameId", gameId);
+      }
+
       return {
         ...prev,
         messages: [...(prev.messages || []), message],
@@ -71,7 +80,8 @@ export default function GamePage() {
   const copyGameCode = () => {
     if (game?.code) {
       navigator.clipboard.writeText(game.code);
-      alert("Game code copied to clipboard!");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -119,7 +129,7 @@ export default function GamePage() {
                       className="flex items-center gap-2"
                     >
                       <Copy className="h-4 w-4" />
-                      {game.code}
+                      {copied ? "Copied!" : game.code}
                     </Button>
                   )}
                   {!game.player2Id && (

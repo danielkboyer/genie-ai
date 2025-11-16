@@ -47,7 +47,8 @@ Also use your previous questions and guesses to inform your next guess/question.
 Guidelines:
 - You probably want to start by asking broad question to narrow down the category.
 - As you gather more information, ask more specific questions to zero in on the word.
-- Once you feel confident, you can make a guess.
+- Once you feel confident, you should make a guess
+- Remember that your questions and guesses will help them too, so try to be strategic.
 
 Previous conversation:
 ${conversationHistory || "No previous questions yet."}`,

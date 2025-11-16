@@ -38,9 +38,6 @@ export function MessageBubble({ message, isCurrentPlayer }: MessageBubbleProps) 
             isCurrentPlayer ? "rounded-br-md" : "rounded-bl-md"
           )}
         >
-          <div className="text-xs font-semibold mb-1 text-purple-600">
-            Genie AI:
-          </div>
           <div className="break-words font-medium">{message.aiResponse}</div>
         </div>
       )}

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Trophy } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
@@ -23,6 +23,22 @@ export default function Home() {
     }
     return "";
   });
+  const [hasWonToday, setHasWonToday] = useState(false);
+  const [todayGameId, setTodayGameId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check if user has won today
+    if (typeof window !== "undefined") {
+      const today = new Date().toISOString().split("T")[0];
+      const wonDate = localStorage.getItem("lastWonDate");
+      const gameId = localStorage.getItem("lastWonGameId");
+
+      if (wonDate === today && gameId) {
+        setHasWonToday(true);
+        setTodayGameId(gameId);
+      }
+    }
+  }, []);
 
   const handlePlayAI = async () => {
     setLoading(true);
@@ -118,82 +134,107 @@ export default function Home() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            onClick={handlePlayAI}
-            disabled={loading}
-            className="w-full h-14 text-lg font-semibold"
-            size="lg"
-          >
-            {loading ? "Starting..." : "Play vs AI"}
-          </Button>
-
-          <Button
-            onClick={handlePlayFriend}
-            disabled={loading}
-            variant="outline"
-            className="w-full h-12"
-            size="lg"
-          >
-            Play with Friend
-          </Button>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-muted-foreground">Or</span>
-            </div>
-          </div>
-
-          {!showJoinInput ? (
-            <Button
-              onClick={() => setShowJoinInput(true)}
-              variant="ghost"
-              className="w-full"
-            >
-              Join a Friend's Game
-            </Button>
-          ) : (
-            <div className="space-y-2">
-              <Input
-                placeholder="Enter game code"
-                value={gameCode}
-                onChange={(e) => setGameCode(e.target.value.toUpperCase())}
-                maxLength={6}
-                className="text-center text-lg font-mono tracking-wider"
-              />
-              <div className="flex gap-2">
+          {hasWonToday ? (
+            <>
+              <div className="text-center py-6 space-y-4">
+                <Trophy className="h-16 w-16 mx-auto text-yellow-500" />
+                <h3 className="text-2xl font-bold text-green-600">You beat today's word!</h3>
+                <p className="text-gray-600">Come back tomorrow for a new word</p>
                 <Button
-                  onClick={handleJoinGame}
-                  disabled={loading || !gameCode.trim()}
-                  className="flex-1"
-                >
-                  Join Game
-                </Button>
-                <Button
-                  onClick={() => {
-                    setShowJoinInput(false);
-                    setGameCode("");
-                  }}
+                  onClick={() => router.push(`/game/${todayGameId}`)}
                   variant="outline"
-                  disabled={loading}
+                  className="w-full"
                 >
-                  Cancel
+                  View Game Results
                 </Button>
               </div>
-            </div>
-          )}
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={handlePlayAI}
+                disabled={loading}
+                className="w-full h-14 text-lg font-semibold"
+                size="lg"
+              >
+                {loading ? "Starting..." : "Play vs AI"}
+              </Button>
 
-          <div className="mt-6 p-4 bg-purple-50 rounded-lg">
-            <h3 className="font-semibold text-sm mb-2">How to Play:</h3>
-            <ul className="text-sm text-gray-600 space-y-1">
-              <li>• Ask yes/no questions to narrow down the word</li>
-              <li>• The AI will respond: yes, no, sometimes, maybe, or not relevant</li>
-              <li>• Take turns with your opponent</li>
-              <li>• First to guess correctly wins!</li>
-            </ul>
-          </div>
+              <Button
+                onClick={handlePlayFriend}
+                disabled={loading}
+                variant="outline"
+                className="w-full h-12"
+                size="lg"
+              >
+                Play with Friend
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+
+              {!showJoinInput ? (
+                <Button
+                  onClick={() => setShowJoinInput(true)}
+                  variant="ghost"
+                  className="w-full"
+                >
+                  Join a Friend's Game
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Enter game code"
+                    value={gameCode}
+                    onChange={(e) => {
+                      const value = e.target.value.toUpperCase();
+                      setGameCode(value);
+                    }}
+                    maxLength={6}
+                    className="text-center text-lg font-mono tracking-wider"
+                  />
+                  {gameCode.length > 0 && gameCode.length < 6 && (
+                    <p className="text-xs text-red-500 text-center">Code must be 6 letters</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleJoinGame}
+                      disabled={loading || gameCode.length !== 6}
+                      className="flex-1"
+                    >
+                      Join Game
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setShowJoinInput(false);
+                        setGameCode("");
+                      }}
+                      variant="outline"
+                      disabled={loading}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 p-4 bg-purple-50 rounded-lg">
+                <h3 className="font-semibold text-sm mb-2">How to Play:</h3>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Ask yes/no questions to narrow down the word</li>
+                  <li>• The AI will respond: yes, no, sometimes, maybe, or not relevant</li>
+                  <li>• Take turns with your opponent</li>
+                  <li>• First to guess correctly wins!</li>
+                </ul>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

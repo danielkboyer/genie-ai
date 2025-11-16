@@ -155,12 +155,15 @@ async function generateGameAIResponse(question: string, secretWord: string): Pro
     model: openai("gpt-5-nano"),
     system: `You are the judge/question answerer in a word guessing game. The secret word is "${secretWord}".
 
-A player will ask you a yes/no question to try to figure out the secret word. You must respond with ONLY one of these five options:
-- "yes" - if the answer is clearly yes
-- "no" - if the answer is clearly no
-- "sometimes" - if it depends on context or is sometimes true
-- "maybe" - if it's uncertain or could go either way
-- "not relevant" - if the question doesn't help identify the word
+A player will ask you a yes/no question to try to figure out the secret word. You must respond with ONLY one of these eight options:
+- "Yes"
+- "No"
+- "Unknown"
+- "Sometimes"
+- "Probably"
+- "Probably Not"
+- "Irrelevant"
+- "Depends"
 
 Try to be as accurate as possible.`,
     prompt: question,
@@ -170,8 +173,8 @@ Try to be as accurate as possible.`,
   const responseText = text.trim().toLowerCase();
 
   // Validate response is one of the allowed options
-  const validResponses = ["yes", "no", "sometimes", "maybe", "not relevant"];
-  return validResponses.includes(responseText) ? responseText : "not relevant";
+  const validResponses = ["yes", "no", "sometimes", "unknown", "probably", "probably not", "depends", "irrelevant"];
+  return validResponses.includes(responseText) ? responseText : "I don't know";
 }
 
 // Mock Game AI for testing without OpenAI API
