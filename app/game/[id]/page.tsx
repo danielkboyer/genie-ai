@@ -62,6 +62,8 @@ export default function GamePage() {
         messages: [...(prev.messages || []), message],
         status: gameStatus as "active" | "completed",
         winnerId,
+        // In AI mode, keep the turn with the current player
+        currentTurn: prev.mode === "ai" ? playerId : prev.currentTurn,
       };
     });
   };

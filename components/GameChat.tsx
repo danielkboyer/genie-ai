@@ -61,7 +61,14 @@ export function GameChat({
       const data = await response.json();
 
       if (response.ok) {
+        // Add player's message
         onMessageSent(data.message, data.gameStatus, data.winnerId);
+
+        // Add AI's message if it exists
+        if (data.aiMessage) {
+          onMessageSent(data.aiMessage, data.gameStatus, data.winnerId);
+        }
+
         setInput("");
       } else {
         alert(data.error || "Failed to send message");

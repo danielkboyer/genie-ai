@@ -12,14 +12,14 @@ export interface GameMessage {
 export interface Game {
   id: string;
   code?: string;
-  secretWord: string;
+  secretWord: string; // The one secret word both are trying to guess
   date: string;
   mode: "ai" | "friend";
   status: "active" | "completed";
   winnerId?: string;
   messages: GameMessage[];
   player1Id: string;
-  player2Id?: string;
+  player2Id?: string; // In AI mode, this is "ai"
   currentTurn: string;
   createdAt: number;
 }
@@ -38,7 +38,7 @@ export async function getTodayWord(): Promise<string> {
       `,
       {
         date: today,
-        word: await generateRandomWord() // You'll need to implement this
+        word: generateRandomWord()
       }
     );
 
@@ -57,46 +57,71 @@ export async function createGame(
   const session = await getSession();
   try {
     const gameId = generateId();
-    const code = mode === "friend" ? generateGameCode() : undefined;
+    const code = mode === "friend" ? generateGameCode() : null;
     const today = new Date().toISOString().split("T")[0];
 
-    await session.run(
+    const query = mode === "friend"
+      ? `
+        CREATE (g:Game {
+          id: $id,
+          code: $code,
+          secretWord: $secretWord,
+          date: $date,
+          mode: $mode,
+          status: 'active',
+          player1Id: $playerId,
+          currentTurn: $playerId,
+          createdAt: timestamp()
+        })
+        RETURN g
       `
-      CREATE (g:Game {
-        id: $id,
-        code: $code,
-        secretWord: $secretWord,
-        date: $date,
-        mode: $mode,
-        status: 'active',
-        player1Id: $playerId,
-        currentTurn: $playerId,
-        createdAt: timestamp()
-      })
-      RETURN g
-      `,
-      {
-        id: gameId,
-        code,
-        secretWord,
-        date: today,
-        mode,
-        playerId,
-      }
-    );
+      : `
+        CREATE (g:Game {
+          id: $id,
+          secretWord: $secretWord,
+          date: $date,
+          mode: $mode,
+          status: 'active',
+          player1Id: $playerId,
+          player2Id: 'ai',
+          currentTurn: $playerId,
+          createdAt: timestamp()
+        })
+        RETURN g
+      `;
 
-    return {
+    const params: any = {
       id: gameId,
-      code,
+      secretWord,
+      date: today,
+      mode,
+      playerId,
+    };
+
+    if (mode === "friend") {
+      params.code = code;
+    }
+
+    await session.run(query, params);
+
+    const game: Game = {
+      id: gameId,
       secretWord,
       date: today,
       mode,
       status: "active",
       messages: [],
       player1Id: playerId,
+      player2Id: mode === "ai" ? "ai" : undefined,
       currentTurn: playerId,
       createdAt: Date.now(),
     };
+
+    if (mode === "friend" && code) {
+      game.code = code;
+    }
+
+    return game;
   } finally {
     await session.close();
   }
@@ -182,8 +207,9 @@ export async function getGame(gameId: string): Promise<Game | null> {
       `
       MATCH (g:Game {id: $gameId})
       OPTIONAL MATCH (g)-[:HAS_MESSAGE]->(m:Message)
-      RETURN g, collect(m) as messages
+      WITH g, m
       ORDER BY m.timestamp
+      RETURN g, collect(m) as messages
       `,
       { gameId }
     );
