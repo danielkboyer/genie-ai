@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { GameChat } from "@/components/GameChat";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Copy, Trophy, Clock } from "lucide-react";
+import { Copy, Trophy, Clock, Share2 } from "lucide-react";
 import { Game, GameMessage } from "@/lib/db-operations";
+import { colors } from "@/lib/colors";
 
 function getTimeUntilNextWord(): string {
   const now = new Date();
@@ -42,6 +43,9 @@ export default function GamePage() {
   });
   const [copied, setCopied] = useState(false);
   const [timeUntilNext, setTimeUntilNext] = useState(getTimeUntilNextWord());
+  const [shared, setShared] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [waitingForAI, setWaitingForAI] = useState(false);
 
   const fetchGame = async () => {
     try {
@@ -127,19 +131,97 @@ export default function GamePage() {
     });
   };
 
-  const copyGameCode = () => {
-    if (game?.code) {
-      navigator.clipboard.writeText(game.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const copyGameCode = async () => {
+    if (!game?.code) return;
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(game.code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = game.code;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      console.error('Copy failed:', error);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!game) return;
+
+    const isWinner = game.winnerId === playerId;
+    const now = new Date();
+    const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+    const startDate = new Date(2025, 10, 16);
+    const currentMT = new Date(mountainTime.getFullYear(), mountainTime.getMonth(), mountainTime.getDate());
+    const daysSinceStart = Math.floor((currentMT.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Count player's questions and guesses
+    const playerMessages = game.messages?.filter(m => m.playerId === playerId) || [];
+    const totalAttempts = playerMessages.length;
+
+    const shareText = `The Secret Word #${daysSinceStart}\n${isWinner ? '🏆 Won!' : '❌ Lost'} in ${totalAttempts} ${totalAttempts === 1 ? 'attempt' : 'attempts'}\n\nhttps://secretword.xyz`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          text: shareText,
+        });
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareText);
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      } else {
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = shareText;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          setShared(true);
+          setTimeout(() => setShared(false), 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      // Fallback to manual copy for older browsers
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(shareText);
+          setShared(true);
+          setTimeout(() => setShared(false), 2000);
+        } catch (err) {
+          console.error('Clipboard write failed:', err);
+        }
+      }
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-100 via-blue-100 to-pink-100 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: colors.background.main }}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto" style={{ borderColor: colors.primary.main }}></div>
           <p className="mt-4 text-gray-600">Loading game...</p>
         </div>
       </div>
@@ -154,23 +236,26 @@ export default function GamePage() {
   const isWinner = game.winnerId === playerId;
   const isCompleted = game.status === "completed";
 
+  // Determine if it's actually the player's turn considering loading states
+  const showYourTurn = isMyTurn && !chatLoading && !waitingForAI;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-blue-100 to-pink-100 p-4">
+    <div className="min-h-screen p-4" style={{ backgroundColor: colors.background.main }}>
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                Genie AI
+            <div className="flex items-start justify-between">
+              <CardTitle className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                The Secret Word
               </CardTitle>
               {game.mode === "ai" ? (
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4" />
-                  <span className="font-medium">vs AI</span>
+                  <span className="font-medium">Solo Mode</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end gap-1">
                   {game.code && (
                     <Button
                       onClick={copyGameCode}
@@ -183,7 +268,7 @@ export default function GamePage() {
                     </Button>
                   )}
                   {!game.player2Id && (
-                    <span className="text-sm text-orange-600 font-medium">
+                    <span className="text-xs text-orange-600 font-medium">
                       Waiting for friend...
                     </span>
                   )}
@@ -192,9 +277,17 @@ export default function GamePage() {
             </div>
             {!isCompleted && (
               <div className="mt-2">
-                {isMyTurn ? (
+                {showYourTurn ? (
                   <div className="text-sm font-medium text-green-600">
                     Your turn!
+                  </div>
+                ) : waitingForAI ? (
+                  <div className="text-sm text-orange-600">
+                    Opponent is thinking...
+                  </div>
+                ) : chatLoading ? (
+                  <div className="text-sm text-gray-500">
+                    Waiting for response...
                   </div>
                 ) : (
                   <div className="text-sm text-gray-500">
@@ -210,7 +303,7 @@ export default function GamePage() {
 
         {/* Game Result */}
         {isCompleted && (
-          <Card className="mb-4 border-2 border-purple-500">
+          <Card className="mb-4 border-2" style={{ borderColor: colors.primary.main }}>
             <CardContent className="pt-6">
               <div className="text-center space-y-3">
                 <Trophy className="h-12 w-12 mx-auto text-yellow-500" />
@@ -219,13 +312,23 @@ export default function GamePage() {
                 </h2>
                 <p className="text-gray-600">
                   The secret word was:{" "}
-                  <span className="font-bold text-purple-600">
+                  <span className="font-bold" style={{ color: colors.primary.main }}>
                     {game.secretWord}
                   </span>
                 </p>
+                <Button
+                  onClick={handleShare}
+                  className="mt-4 text-white shadow-md hover:shadow-lg transition-all"
+                  style={{ backgroundColor: colors.primary.main }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primary.hover}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary.main}
+                >
+                  <Share2 className="h-4 w-4 mr-2" />
+                  {shared ? "Copied!" : "Share Result"}
+                </Button>
                 <div className="pt-2 border-t border-gray-200 mt-4">
                   <p className="text-sm text-gray-500">
-                    Next word in: <span className="font-semibold text-purple-600">{timeUntilNext}</span>
+                    Next word in: <span className="font-semibold" style={{ color: colors.primary.main }}>{timeUntilNext}</span>
                   </p>
                 </div>
               </div>
@@ -243,6 +346,10 @@ export default function GamePage() {
             gameStatus={game.status || "active"}
             gameMode={game.mode}
             onMessageSent={handleMessageSent}
+            onLoadingChange={(loading, waiting) => {
+              setChatLoading(loading);
+              setWaitingForAI(waiting);
+            }}
           />
         </Card>
 

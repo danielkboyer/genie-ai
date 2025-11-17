@@ -1,7 +1,7 @@
 {
-  "name": "genieai",
+  "name": "secretword",
   "version": "1.0.0",
-  "description": "Genie AI - A word guessing game",
+  "description": "The Secret Word - A word guessing game",
   "private": true,
   "scripts": {
     "dev": "next dev",

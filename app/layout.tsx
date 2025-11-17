@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Luckiest_Guy } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
+const luckiestGuy = Luckiest_Guy({
+  weight: ["400"],
+  subsets: ["latin"],
+  variable: "--font-comic",
+});
 
 export const metadata: Metadata = {
-  title: "Genie AI - Word Guessing Game",
-  description: "Guess the daily word by asking questions to Genie AI",
+  title: "The Secret Word - Word Guessing Game",
+  description: "Guess the daily word by asking yes or no questions",
   icons: {
-    icon: '/favicon.svg',
+    icon: "/favicon.svg",
   },
 };
 
@@ -19,7 +24,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={`${inter.className} ${luckiestGuy.variable}`}>
+        {children}
+      </body>
     </html>
   );
 }

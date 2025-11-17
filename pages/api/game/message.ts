@@ -1,13 +1,19 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { addMessage, getGame, updateGameStatus, updateTurn } from "@/lib/db-operations";
+import {
+  addMessage,
+  getGame,
+  updateGameStatus,
+  updateTurn,
+} from "@/lib/db-operations";
 import { GameMessage } from "@/lib/db-operations";
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
 // Check if we should use mock AI
-const useMockAI = () => !process.env.OPENAI_API_KEY ||
-                        process.env.OPENAI_API_KEY.startsWith("mock") ||
-                        process.env.USE_MOCK_AI === "true";
+const useMockAI = () =>
+  !process.env.OPENAI_API_KEY ||
+  process.env.OPENAI_API_KEY.startsWith("mock") ||
+  process.env.USE_MOCK_AI === "true";
 
 export default async function handler(
   req: NextApiRequest,
@@ -50,7 +56,10 @@ export default async function handler(
 
     if (type === "guess") {
       // Check if guess is correct (remove trailing punctuation like ?)
-      const cleanedGuess = content.toLowerCase().trim().replace(/[?!.,:;]+$/, '');
+      const cleanedGuess = content
+        .toLowerCase()
+        .trim()
+        .replace(/[?!.,:;]+$/, "");
       isCorrectGuess = cleanedGuess === secretWord.toLowerCase().trim();
       aiResponse = isCorrectGuess ? "Correct!" : "Incorrect!";
     } else {
@@ -75,7 +84,7 @@ export default async function handler(
         message,
         aiMessage: null,
         gameStatus: "completed",
-        winnerId: playerId
+        winnerId: playerId,
       });
     }
 
@@ -121,7 +130,7 @@ export default async function handler(
           message,
           aiMessage,
           gameStatus: "completed",
-          winnerId: "ai"
+          winnerId: "ai",
         });
       }
 
@@ -129,7 +138,8 @@ export default async function handler(
       await updateTurn(gameId, playerId);
     } else {
       // Friend mode - switch turns
-      const nextPlayer = playerId === game.player1Id ? game.player2Id : game.player1Id;
+      const nextPlayer =
+        playerId === game.player1Id ? game.player2Id : game.player1Id;
       if (nextPlayer) {
         await updateTurn(gameId, nextPlayer);
       }
@@ -144,20 +154,28 @@ export default async function handler(
 
 function generateId(): string {
   // Use timestamp + random to ensure uniqueness
-  return Date.now().toString(36) +
-         Math.random().toString(36).substring(2, 15) +
-         Math.random().toString(36).substring(2, 15);
+  return (
+    Date.now().toString(36) +
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15)
+  );
 }
 
 // Generate Game AI response to a question about the secret word
-async function generateGameAIResponse(question: string, secretWord: string): Promise<string> {
+async function generateGameAIResponse(
+  question: string,
+  secretWord: string
+): Promise<string> {
   if (useMockAI()) {
-    return getMockGameAIResponse(question.toLowerCase(), secretWord.toLowerCase());
+    return getMockGameAIResponse(
+      question.toLowerCase(),
+      secretWord.toLowerCase()
+    );
   }
 
   const { text } = await generateText({
     model: openai("gpt-5-nano"),
-    system: `You are the judge/question answerer in a word guessing game. The secret word is "${secretWord}".
+    system: `You are the judge/question answerer in a word guessing game (similar to the old game 21 questions). The secret word is "${secretWord}".
 
 A player will ask you a yes/no question to try to figure out the secret word. You must respond with ONLY one of these eight options:
 - "Yes"
@@ -169,15 +187,24 @@ A player will ask you a yes/no question to try to figure out the secret word. Yo
 - "Irrelevant"
 - "Depends"
 
-Try to be as accurate as possible.`,
+Since you only have 8 options you won't be able to give detailed explanations or explain yourself, so you should choose what fits best.`,
     prompt: question,
-    maxRetries: 0,
+    maxRetries: 2,
   });
 
   const responseText = text.trim().toLowerCase();
 
   // Validate response is one of the allowed options
-  const validResponses = ["yes", "no", "sometimes", "unknown", "probably", "probably not", "depends", "irrelevant"];
+  const validResponses = [
+    "yes",
+    "no",
+    "sometimes",
+    "unknown",
+    "probably",
+    "probably not",
+    "depends",
+    "irrelevant",
+  ];
   return validResponses.includes(responseText) ? responseText : "I don't know";
 }
 
@@ -185,22 +212,53 @@ Try to be as accurate as possible.`,
 function getMockGameAIResponse(question: string, secretWord: string): string {
   // Basic logic for common question patterns
   if (question.includes("animal") || question.includes("living")) {
-    return ["dog", "cat", "elephant", "penguin", "kangaroo"].includes(secretWord) ? "yes" : "no";
+    return ["dog", "cat", "elephant", "penguin", "kangaroo"].includes(
+      secretWord
+    )
+      ? "yes"
+      : "no";
   }
   if (question.includes("food") || question.includes("eat")) {
-    return ["pizza", "chocolate", "champagne"].includes(secretWord) ? "yes" : "no";
+    return ["pizza", "chocolate", "champagne"].includes(secretWord)
+      ? "yes"
+      : "no";
   }
   if (question.includes("person") || question.includes("human")) {
     return secretWord === "astronaut" ? "yes" : "no";
   }
   if (question.includes("object") || question.includes("thing")) {
-    return ["computer", "guitar", "telephone", "umbrella", "telescope", "submarine"].includes(secretWord) ? "yes" : "no";
+    return [
+      "computer",
+      "guitar",
+      "telephone",
+      "umbrella",
+      "telescope",
+      "submarine",
+    ].includes(secretWord)
+      ? "yes"
+      : "no";
   }
   if (question.includes("nature") || question.includes("natural")) {
-    return ["mountain", "rainbow", "volcano", "butterfly", "hurricane"].includes(secretWord) ? "yes" : "no";
+    return [
+      "mountain",
+      "rainbow",
+      "volcano",
+      "butterfly",
+      "hurricane",
+    ].includes(secretWord)
+      ? "yes"
+      : "no";
   }
   if (question.includes("big") || question.includes("large")) {
-    return ["elephant", "mountain", "volcano", "submarine", "telescope"].includes(secretWord) ? "yes" : "no";
+    return [
+      "elephant",
+      "mountain",
+      "volcano",
+      "submarine",
+      "telescope",
+    ].includes(secretWord)
+      ? "yes"
+      : "no";
   }
   if (question.includes("small") || question.includes("tiny")) {
     return ["butterfly", "chocolate"].includes(secretWord) ? "yes" : "no";
@@ -218,15 +276,20 @@ function getMockGameAIResponse(question: string, secretWord: string): string {
 }
 
 // Generate AI question based on conversation history
-async function generateAIQuestion(conversationHistory: GameMessage[]): Promise<string> {
+async function generateAIQuestion(
+  conversationHistory: GameMessage[]
+): Promise<string> {
   if (useMockAI()) {
     return getMockQuestion(conversationHistory);
   }
 
   // Use real AI to generate intelligent questions
   const formattedHistory = conversationHistory
-    .map((msg: GameMessage) =>
-      `${msg.playerId === "ai" ? "AI" : "Player"}: ${msg.content} → Response: ${msg.aiResponse}`
+    .map(
+      (msg: GameMessage) =>
+        `${msg.playerId === "ai" ? "AI" : "Player"}: ${
+          msg.content
+        } → Response: ${msg.aiResponse}`
     )
     .join("\n");
 
@@ -248,7 +311,8 @@ Guidelines:
 
 Previous conversation:
 ${formattedHistory || "No previous questions yet."}`,
-    prompt: "What is your next yes/no question to figure out the secret word? (Or make a guess if you're confident)",
+    prompt:
+      "What is your next yes/no question to figure out the secret word? (Or make a guess if you're confident)",
     maxRetries: 2,
   });
 
@@ -257,7 +321,7 @@ ${formattedHistory || "No previous questions yet."}`,
 
 // Mock AI question generator for testing without OpenAI
 function getMockQuestion(conversationHistory: GameMessage[]): string {
-  const aiMessages = conversationHistory.filter(msg => msg.playerId === "ai");
+  const aiMessages = conversationHistory.filter((msg) => msg.playerId === "ai");
   const questionCount = aiMessages.length;
 
   // After 8 questions, start making guesses
@@ -276,10 +340,10 @@ function getMockQuestion(conversationHistory: GameMessage[]): string {
     ];
 
     const alreadyGuessed = aiMessages
-      .filter(msg => msg.type === "guess")
-      .map(msg => msg.content.toLowerCase());
+      .filter((msg) => msg.type === "guess")
+      .map((msg) => msg.content.toLowerCase());
 
-    const availableGuesses = guesses.filter(g => !alreadyGuessed.includes(g));
+    const availableGuesses = guesses.filter((g) => !alreadyGuessed.includes(g));
 
     if (availableGuesses.length > 0) {
       return availableGuesses[0];
@@ -307,10 +371,13 @@ function getMockQuestion(conversationHistory: GameMessage[]): string {
   ];
 
   // Filter out questions similar to ones already asked
-  const askedQuestions = aiMessages.map(msg => msg.content.toLowerCase());
+  const askedQuestions = aiMessages.map((msg) => msg.content.toLowerCase());
 
-  const availableQuestions = questions.filter(q =>
-    !askedQuestions.some(asked => asked.includes(q.toLowerCase().slice(6, 15)))
+  const availableQuestions = questions.filter(
+    (q) =>
+      !askedQuestions.some((asked) =>
+        asked.includes(q.toLowerCase().slice(6, 15))
+      )
   );
 
   if (availableQuestions.length > 0) {

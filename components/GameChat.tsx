@@ -6,6 +6,28 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { GameMessage } from "@/lib/db-operations";
 import { Send } from "lucide-react";
+import { colors } from "@/lib/colors";
+
+const FUNNY_LOADING_MESSAGES = [
+  "Planning your demise",
+  "Cooking up a question",
+  "Plotting and scheming",
+  "Thinking frantically",
+  "Calculating the big bang",
+  "Trying really hard to think",
+  "You're so done for",
+  "Googling how to win",
+  "Summoning brain cells",
+  "Pondering the orb",
+  "Sweating profusely",
+  "Screaming",
+];
+
+function getRandomLoadingMessage(): string {
+  return FUNNY_LOADING_MESSAGES[
+    Math.floor(Math.random() * FUNNY_LOADING_MESSAGES.length)
+  ];
+}
 
 interface GameChatProps {
   gameId: string;
@@ -14,7 +36,12 @@ interface GameChatProps {
   isMyTurn: boolean;
   gameStatus: "active" | "completed";
   gameMode?: "ai" | "friend";
-  onMessageSent: (message: GameMessage, gameStatus: string, winnerId?: string) => void;
+  onMessageSent: (
+    message: GameMessage,
+    gameStatus: string,
+    winnerId?: string
+  ) => void;
+  onLoadingChange?: (loading: boolean, waitingForAI: boolean) => void;
 }
 
 export function GameChat({
@@ -25,14 +52,21 @@ export function GameChat({
   gameStatus,
   gameMode,
   onMessageSent,
+  onLoadingChange,
 }: GameChatProps) {
   const [input, setInput] = useState("");
   const [isQuestion, setIsQuestion] = useState(true);
   const [loading, setLoading] = useState(false);
   const [waitingForAI, setWaitingForAI] = useState(false);
-  const [pendingQuestion, setPendingQuestion] = useState<{ content: string; type: "question" | "guess" } | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    content: string;
+    type: "question" | "guess";
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
+  const [funnyLoadingMessage, setFunnyLoadingMessage] = useState(
+    getRandomLoadingMessage()
+  );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,16 +83,24 @@ export function GameChat({
   useEffect(() => {
     if (messages.length > lastMessageCountRef.current) {
       const newMessages = messages.slice(lastMessageCountRef.current);
-      const hasPlayerAIMessage = newMessages.some(m => m.playerId === "ai");
+      const hasPlayerAIMessage = newMessages.some((m) => m.playerId === "ai");
 
       // If we got the Game AI response (player's message with aiResponse), stop loading
-      if (loading && newMessages.some(m => m.playerId === playerId && m.aiResponse)) {
+      if (
+        loading &&
+        newMessages.some((m) => m.playerId === playerId && m.aiResponse)
+      ) {
         setLoading(false);
         setPendingQuestion(null);
         // If in AI mode and we haven't gotten the AI's question yet, show AI thinking
         // BUT only if game is still active (not completed) AND we're in AI mode
-        if (gameMode === "ai" && gameStatus === "active" && !hasPlayerAIMessage) {
+        if (
+          gameMode === "ai" &&
+          gameStatus === "active" &&
+          !hasPlayerAIMessage
+        ) {
           setWaitingForAI(true);
+          setFunnyLoadingMessage(getRandomLoadingMessage());
         }
       }
 
@@ -77,6 +119,11 @@ export function GameChat({
       lastMessageCountRef.current = messages.length;
     }
   }, [messages, loading, waitingForAI, playerId, gameStatus]);
+
+  // Notify parent of loading state changes
+  useEffect(() => {
+    onLoadingChange?.(loading, waitingForAI);
+  }, [loading, waitingForAI, onLoadingChange]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,27 +188,61 @@ export function GameChat({
         {loading && pendingQuestion && (
           <div className="flex flex-col gap-1 mb-3 items-end">
             {/* Player's pending question */}
-            <div className="max-w-[75%] rounded-2xl px-4 py-2 shadow-sm bg-blue-500 text-white rounded-br-md">
-              <div className="text-xs font-semibold mb-1 opacity-90">
-                {pendingQuestion.type === "question" ? "Question:" : "Guess:"}
+            <div className="max-w-[75%] rounded-3xl px-5 py-3 shadow-lg rounded-br-md font-[family-name:var(--font-comic)] relative overflow-hidden" style={{ backgroundColor: `${colors.primary.main}CC`, color: "white" }}>
+              {/* Shine effect */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.1) 100%)"
+                }}
+              />
+              <div className="relative z-10">
+                <div className="text-xs font-semibold mb-1 opacity-90">
+                  {pendingQuestion.type === "question" ? "Question:" : "Guess:"}
+                </div>
+                <div className="break-words text-base">
+                  {pendingQuestion.content}
+                </div>
               </div>
-              <div className="break-words">{pendingQuestion.content}</div>
             </div>
             {/* Loading indicator */}
-            <div className="max-w-[75%] rounded-2xl px-4 py-2 shadow-sm bg-gray-100 text-gray-900 rounded-br-md">
-              <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-                <span className="text-sm text-gray-600">Thinking...</span>
+            <div className="max-w-[75%] rounded-3xl px-5 py-3 shadow-md rounded-br-md font-[family-name:var(--font-comic)] relative overflow-hidden" style={{ backgroundColor: "#E5E7EBCC", color: "#1F2937" }}>
+              {/* Shine effect */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 60%)"
+                }}
+              />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="animate-spin rounded-full h-4 w-4 border-b-2"
+                    style={{ borderColor: colors.primary.main }}
+                  ></div>
+                  <span className="text-sm text-gray-600">Thinking...</span>
+                </div>
               </div>
             </div>
           </div>
         )}
         {waitingForAI && (
           <div className="flex items-start gap-1 mb-3">
-            <div className="max-w-[75%] rounded-2xl px-4 py-2 shadow-sm bg-orange-100 text-gray-900 rounded-bl-md">
-              <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
-                <span className="text-sm text-gray-600">Opponent is thinking...</span>
+            <div className="max-w-[75%] rounded-3xl px-5 py-3 shadow-lg rounded-bl-md font-[family-name:var(--font-comic)] relative overflow-hidden" style={{ backgroundColor: "#FF8C42CC", color: "white" }}>
+              {/* Shine effect */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.1) 100%)"
+                }}
+              />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span className="text-sm">
+                    {funnyLoadingMessage}...
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -177,7 +258,28 @@ export function GameChat({
               type="button"
               variant={isQuestion ? "default" : "outline"}
               onClick={() => setIsQuestion(true)}
-              className={`flex-1 ${isQuestion ? 'ring-2 ring-purple-600 ring-offset-2' : ''}`}
+              className={`flex-1 transition-all ${
+                isQuestion ? "text-white" : "border-2"
+              }`}
+              style={
+                isQuestion
+                  ? {
+                      backgroundColor: colors.primary.main,
+                      borderColor: colors.primary.main,
+                    }
+                  : {
+                      borderColor: colors.primary.main,
+                      color: colors.primary.main,
+                    }
+              }
+              onMouseEnter={(e) =>
+                isQuestion &&
+                (e.currentTarget.style.backgroundColor = colors.primary.hover)
+              }
+              onMouseLeave={(e) =>
+                isQuestion &&
+                (e.currentTarget.style.backgroundColor = colors.primary.main)
+              }
               size="sm"
             >
               Ask Question
@@ -186,7 +288,19 @@ export function GameChat({
               type="button"
               variant={!isQuestion ? "default" : "outline"}
               onClick={() => setIsQuestion(false)}
-              className={`flex-1 ${!isQuestion ? 'ring-2 ring-purple-600 ring-offset-2' : ''}`}
+              className={`flex-1 transition-all ${
+                !isQuestion
+                  ? "bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-500"
+                  : "border-2"
+              }`}
+              style={
+                !isQuestion
+                  ? {}
+                  : {
+                      borderColor: colors.primary.main,
+                      color: colors.primary.main,
+                    }
+              }
               size="sm"
             >
               Guess Word
@@ -202,12 +316,20 @@ export function GameChat({
                   ? "Waiting for other player..."
                   : isQuestion
                   ? "Ask a yes/no question..."
-                  : "Enter your guess..."
+                  : "What's your guess? 🎯"
               }
               disabled={!isMyTurn || loading}
-              className="flex-1"
+              className={`flex-1 transition-all ${
+                !isQuestion && isMyTurn
+                  ? "ring-2 ring-yellow-400 ring-offset-2 border-yellow-400 font-semibold"
+                  : ""
+              }`}
             />
-            <Button type="submit" disabled={!isMyTurn || loading || !input.trim()}>
+            <Button
+              type="submit"
+              disabled={!isMyTurn || loading || !input.trim()}
+              className={!isQuestion ? "bg-yellow-500 hover:bg-yellow-600" : ""}
+            >
               <Send className="h-4 w-4" />
             </Button>
           </form>
