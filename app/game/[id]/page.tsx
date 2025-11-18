@@ -174,8 +174,10 @@ export default function GamePage() {
     // Count player's questions and guesses
     const playerMessages = game.messages?.filter(m => m.playerId === playerId) || [];
     const totalAttempts = playerMessages.length;
+    const hintsUsed = game.hintsUsed || 0;
 
-    const shareText = `The Secret Word #${daysSinceStart}\n${isWinner ? '🏆 Won!' : '❌ Lost'} in ${totalAttempts} ${totalAttempts === 1 ? 'attempt' : 'attempts'}\n\nhttps://secretword.xyz`;
+    const hintText = hintsUsed > 0 ? ` (${hintsUsed} ${hintsUsed === 1 ? 'hint' : 'hints'})` : '';
+    const shareText = `The Secret Word #${daysSinceStart}\n${isWinner ? '🏆 Won!' : '❌ Lost'} in ${totalAttempts} ${totalAttempts === 1 ? 'attempt' : 'attempts'}${hintText}\n\nhttps://secretword.xyz`;
 
     try {
       if (navigator.share) {

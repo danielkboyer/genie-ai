@@ -3,7 +3,7 @@ import { words } from "./words";
 
 export interface GameMessage {
   id: string;
-  type: "question" | "guess";
+  type: "question" | "guess" | "hint";
   content: string;
   aiResponse?: string;
   playerId: string;
@@ -23,6 +23,7 @@ export interface Game {
   player2Id?: string; // In AI mode, this is "ai"
   currentTurn: string;
   createdAt: number;
+  hintsUsed?: number; // Track how many hints the player has used
 }
 
 // Get today's word (deterministic based on Mountain Time date)
@@ -272,6 +273,7 @@ export async function getGame(gameId: string): Promise<Game | null> {
       player2Id: game.player2Id,
       currentTurn: game.currentTurn,
       createdAt: Number(game.createdAt),
+      hintsUsed: game.hintsUsed ? Number(game.hintsUsed) : 0,
     };
   } finally {
     await session.close();
@@ -308,6 +310,41 @@ export async function updateTurn(gameId: string, playerId: string): Promise<void
       SET g.currentTurn = $playerId
       `,
       { gameId, playerId }
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+// Increment hints used
+export async function incrementHintsUsed(gameId: string): Promise<void> {
+  const session = await getSession();
+  try {
+    await session.run(
+      `
+      MATCH (g:Game {id: $gameId})
+      SET g.hintsUsed = COALESCE(g.hintsUsed, 0) + 1
+      `,
+      { gameId }
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+// Update message AI response
+export async function updateMessageResponse(
+  messageId: string,
+  aiResponse: string
+): Promise<void> {
+  const session = await getSession();
+  try {
+    await session.run(
+      `
+      MATCH (m:Message {id: $messageId})
+      SET m.aiResponse = $aiResponse
+      `,
+      { messageId, aiResponse }
     );
   } finally {
     await session.close();

@@ -4,6 +4,8 @@ import {
   getGame,
   updateGameStatus,
   updateTurn,
+  incrementHintsUsed,
+  updateMessageResponse,
 } from "@/lib/db-operations";
 import { GameMessage } from "@/lib/db-operations";
 import { openai } from "@ai-sdk/openai";
@@ -29,7 +31,7 @@ export default async function handler(
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  if (type !== "question" && type !== "guess") {
+  if (type !== "question" && type !== "guess" && type !== "hint") {
     return res.status(400).json({ error: "Invalid message type" });
   }
 
@@ -54,7 +56,29 @@ export default async function handler(
     let aiResponse: string | undefined;
     let isCorrectGuess = false;
 
-    if (type === "guess") {
+    if (type === "hint") {
+      // Handle hint request
+      // Get all previous player messages and hints for context
+      const playerMessages = game.messages.filter(
+        (m) => m.playerId === playerId
+      );
+      const previousHints = game.messages
+        .filter((m) => m.type === "hint" && m.playerId === playerId)
+        .map((m) => m.aiResponse || "")
+        .filter((h) => h !== "");
+
+      // Generate a hint based on conversation history and previous hints
+      const hint = await generateHint(
+        secretWord,
+        playerMessages,
+        previousHints
+      );
+
+      // Store just the hint
+      aiResponse = hint;
+
+      await incrementHintsUsed(gameId);
+    } else if (type === "guess") {
       // Check if guess is correct (remove trailing punctuation like ?)
       const cleanedGuess = content
         .toLowerCase()
@@ -99,6 +123,20 @@ export default async function handler(
       const aiIsGuessing = !aiQuestion.includes("?");
       const aiType = aiIsGuessing ? "guess" : "question";
 
+      // Create AI message with just the question (no response yet)
+      const aiQuestionMessage: GameMessage = {
+        id: generateId(),
+        type: aiType,
+        content: aiQuestion,
+        aiResponse: undefined,
+        playerId: "ai",
+        timestamp: Date.now(),
+      };
+
+      // Add the AI's question first
+      await addMessage(gameId, aiQuestionMessage);
+
+      // Now generate the response
       let aiAiResponse: string | undefined;
       let aiCorrectGuess = false;
 
@@ -113,16 +151,14 @@ export default async function handler(
         aiAiResponse = await generateGameAIResponse(aiQuestion, secretWord);
       }
 
-      aiMessage = {
-        id: generateId(),
-        type: aiType,
-        content: aiQuestion,
-        aiResponse: aiAiResponse,
-        playerId: "ai",
-        timestamp: Date.now(),
-      };
+      // Update the message in the database with the response
+      await updateMessageResponse(aiQuestionMessage.id, aiAiResponse);
 
-      await addMessage(gameId, aiMessage);
+      // Create the complete AI message with response
+      aiMessage = {
+        ...aiQuestionMessage,
+        aiResponse: aiAiResponse,
+      };
 
       if (aiCorrectGuess) {
         await updateGameStatus(gameId, "completed", "ai");
@@ -317,6 +353,97 @@ ${formattedHistory || "No previous questions yet."}`,
   });
 
   return text.trim();
+}
+
+// Generate a hint based on conversation history
+async function generateHint(
+  secretWord: string,
+  playerMessages: GameMessage[],
+  previousHints: string[]
+): Promise<string> {
+  if (useMockAI()) {
+    return getMockHint(secretWord, previousHints);
+  }
+
+  // Format conversation history
+  const formattedHistory = playerMessages
+    .map(
+      (msg: GameMessage) =>
+        `${
+          msg.type === "hint"
+            ? "Hint Request"
+            : msg.type === "guess"
+            ? "Guess"
+            : "Question"
+        }: ${msg.content} → Response: ${msg.aiResponse}`
+    )
+    .join("\n");
+
+  const formattedPreviousHints =
+    previousHints.length > 0
+      ? `Previous riddles given:\n${previousHints
+          .map((h, i) => `${i + 1}. ${h}`)
+          .join("\n")}`
+      : "No previous riddles given.";
+
+  const { text } = await generateText({
+    model: openai("gpt-5-nano"),
+    system: `You are helping a player in a word guessing game. The secret word is "${secretWord}".
+
+The player has asked for a hint. Your job is to provide an obtuse riddle that barely helps them get closer to the secret word. 
+
+The riddle must be very very subtle and sometimes even cryptic.
+
+Guidelines for riddles:
+- DO NOT say the secret word or any part of it
+- Keep riddles concise (1 sentence max but hopefully just a few words)
+- Consider what they already know from their questions and answers, sometimes playing off of that.
+- If the secret word is already in one of the previous questions, you should make the riddle be "The secret word was already mentioned in a question". Only do this riddles once if applicable.
+- You should be riddle like with the hint if possible.
+
+**Important**
+- riddles should be very subtle and usually not let them figure it out right away.
+${formattedPreviousHints}
+
+Conversation history:
+${formattedHistory || "No questions asked yet."}`,
+    prompt: "Provide a riddle based on the above guidelines.",
+    maxRetries: 2,
+  });
+
+  return text.trim();
+}
+
+// Mock hint generator for testing without OpenAI
+function getMockHint(secretWord: string, previousHints: string[]): string {
+  const hintCount = previousHints.length;
+
+  // Define hints for common words
+  const hints: Record<string, string[]> = {
+    computer: [
+      "It's an electronic device commonly found in homes and offices.",
+      "People use it for work, entertainment, and communication.",
+      "It has a keyboard and screen.",
+    ],
+    elephant: [
+      "It's the largest land animal.",
+      "It has a long trunk.",
+      "It's native to Africa and Asia.",
+    ],
+    pizza: [
+      "It's a popular food item.",
+      "It usually has cheese and tomato sauce.",
+      "It's often cut into triangular slices.",
+    ],
+  };
+
+  const wordHints = hints[secretWord.toLowerCase()] || [
+    "Think about common everyday things.",
+    "Consider its main purpose or use.",
+    "What category does it belong to?",
+  ];
+
+  return wordHints[Math.min(hintCount, wordHints.length - 1)];
 }
 
 // Mock AI question generator for testing without OpenAI
