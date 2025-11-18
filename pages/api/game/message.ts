@@ -10,6 +10,7 @@ import {
 import { GameMessage } from "@/lib/db-operations";
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { track } from '@vercel/analytics/server';
 
 // Check if we should use mock AI
 const useMockAI = () =>
@@ -104,6 +105,19 @@ export default async function handler(
 
     if (isCorrectGuess) {
       await updateGameStatus(gameId, "completed", playerId);
+
+      // Track game won with server-side analytics
+      const playerMessages = game.messages.filter(m => m.playerId === playerId);
+      const totalAttempts = playerMessages.length + 1;
+      const hintsUsed = game.hintsUsed || 0;
+
+      await track('game_won', {
+        game_mode: game.mode || 'friend',
+        total_attempts: totalAttempts.toString(),
+        hints_used: hintsUsed.toString(),
+        secret_word: game.secretWord
+      });
+
       return res.status(200).json({
         message,
         aiMessage: null,
@@ -162,6 +176,19 @@ export default async function handler(
 
       if (aiCorrectGuess) {
         await updateGameStatus(gameId, "completed", "ai");
+
+        // Track game lost with server-side analytics
+        const playerMessages = game.messages.filter(m => m.playerId === playerId);
+        const totalAttempts = playerMessages.length + 1;
+        const hintsUsed = game.hintsUsed || 0;
+
+        await track('game_lost', {
+          game_mode: 'ai',
+          total_attempts: totalAttempts.toString(),
+          hints_used: hintsUsed.toString(),
+          secret_word: game.secretWord
+        });
+
         return res.status(200).json({
           message,
           aiMessage,

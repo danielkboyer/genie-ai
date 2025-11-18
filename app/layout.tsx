@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Luckiest_Guy } from "next/font/google";
+import { Analytics } from '@vercel/analytics/next';
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -26,6 +27,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} ${luckiestGuy.variable}`}>
         {children}
+        <Analytics />
       </body>
     </html>
   );

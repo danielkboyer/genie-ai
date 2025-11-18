@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { GameMessage } from "@/lib/db-operations";
 import { Send, Lightbulb } from "lucide-react";
 import { colors } from "@/lib/colors";
+import { track } from '@vercel/analytics';
 
 const FUNNY_LOADING_MESSAGES = [
   "Planning your demise",
@@ -199,6 +200,46 @@ export function GameChat({
         setLoading(false);
         setPendingQuestion(null);
         alert(data.error || "Failed to send message");
+      } else {
+        // Track the event with the response data
+        const turnNumber = messages.filter(m => m.playerId === playerId).length + 1;
+
+        if (messageType === "question") {
+          track('question_asked', {
+            game_mode: gameMode || 'friend',
+            turn_number: turnNumber.toString(),
+            question: userInput,
+            ai_response: data.message?.aiResponse || ''
+          });
+        } else if (messageType === "guess") {
+          const isCorrect = data.gameStatus === "completed" && data.winnerId === playerId;
+          track('guess_made', {
+            game_mode: gameMode || 'friend',
+            correct: isCorrect,
+            turn_number: turnNumber.toString(),
+            guess: userInput,
+            secret_word: isCorrect ? (data.message?.aiResponse === "Correct!" ? userInput : '') : ''
+          });
+
+          // Track game won/lost
+          if (data.gameStatus === "completed") {
+            if (data.winnerId === playerId) {
+              track('game_won', {
+                game_mode: gameMode || 'friend',
+                total_attempts: turnNumber.toString(),
+                hints_used: '0', // Will be updated by API
+                secret_word: userInput
+              });
+            } else if (data.winnerId === "ai") {
+              track('game_lost', {
+                game_mode: 'ai',
+                total_attempts: turnNumber.toString(),
+                hints_used: '0', // Will be updated by API
+                secret_word: ''
+              });
+            }
+          }
+        }
       }
       // Don't handle success here - let the polling handle it
       // The useEffect will detect new messages and update loading states
@@ -237,6 +278,14 @@ export function GameChat({
         setLoading(false);
         setPendingQuestion(null);
         alert(data.error || "Failed to request hint");
+      } else {
+        // Track hint request
+        const hintCount = messages.filter(m => m.playerId === playerId && m.type === "hint").length + 1;
+        track('hint_requested', {
+          game_mode: gameMode || 'friend',
+          hint_count: hintCount.toString(),
+          hint_response: data.message?.aiResponse || ''
+        });
       }
     } catch (error) {
       setLoading(false);

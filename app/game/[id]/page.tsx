@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Trophy, Clock, Share2 } from "lucide-react";
 import { Game, GameMessage } from "@/lib/db-operations";
 import { colors } from "@/lib/colors";
+import { track } from '@vercel/analytics';
 
 function getTimeUntilNextWord(): string {
   const now = new Date();
@@ -134,6 +135,8 @@ export default function GamePage() {
   const copyGameCode = async () => {
     if (!game?.code) return;
 
+    track('game_code_copied');
+
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(game.code);
@@ -178,6 +181,12 @@ export default function GamePage() {
 
     const hintText = hintsUsed > 0 ? ` (${hintsUsed} ${hintsUsed === 1 ? 'hint' : 'hints'})` : '';
     const shareText = `The Secret Word #${daysSinceStart}\n${isWinner ? '🏆 Won!' : '❌ Lost'} in ${totalAttempts} ${totalAttempts === 1 ? 'attempt' : 'attempts'}${hintText}\n\nhttps://secretword.xyz`;
+
+    track('result_shared', {
+      won: isWinner,
+      attempts: totalAttempts.toString(),
+      hints_used: hintsUsed.toString()
+    });
 
     try {
       if (navigator.share) {

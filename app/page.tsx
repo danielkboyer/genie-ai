@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Trophy, Share2 } from "lucide-react";
 import Image from "next/image";
 import { colors } from "@/lib/colors";
+import { track } from '@vercel/analytics';
 
 function getTimeUntilNextWord(): string {
   const now = new Date();
@@ -106,6 +107,7 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
+        track('game_created', { mode: 'ai' });
         router.push(`/game/${data.game.id}`);
       } else {
         alert(data.error || "Failed to create game");
@@ -130,6 +132,7 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
+        track('game_created', { mode: 'friend' });
         router.push(`/game/${data.game.id}`);
       } else {
         alert(data.error || "Failed to create game");
@@ -159,6 +162,7 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
+        track('game_joined', { code: gameCode.toUpperCase() });
         router.push(`/game/${data.game.id}`);
       } else {
         alert(data.error || "Failed to join game");
@@ -179,6 +183,12 @@ export default function Home() {
     const daysSinceStart = Math.floor((currentMT.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
     const shareText = `The Secret Word #${daysSinceStart}\n${didWin ? '🏆 Won!' : '❌ Lost'} in ${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}\n\nhttps://secretword.xyz`;
+
+    track('result_shared', {
+      won: didWin,
+      attempts: attemptCount.toString(),
+      hints_used: '0'
+    });
 
     try {
       if (navigator.share) {
@@ -258,7 +268,10 @@ export default function Home() {
                     {shared ? "Copied!" : "Share"}
                   </Button>
                   <Button
-                    onClick={() => router.push(`/game/${todayGameId}`)}
+                    onClick={() => {
+                      track('view_results_clicked');
+                      router.push(`/game/${todayGameId}`);
+                    }}
                     variant="outline"
                     className="flex-1 border-2 hover:bg-opacity-10"
                     style={{ borderColor: colors.primary.main, color: colors.primary.main }}
