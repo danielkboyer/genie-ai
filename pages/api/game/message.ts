@@ -8,9 +8,9 @@ import {
   updateMessageResponse,
 } from "@/lib/db-operations";
 import { GameMessage } from "@/lib/db-operations";
-import { openai } from "@ai-sdk/openai";
+import { openai, OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { generateText } from "ai";
-import { track } from '@vercel/analytics/server';
+import { track } from "@vercel/analytics/server";
 
 // Check if we should use mock AI
 const useMockAI = () =>
@@ -107,15 +107,17 @@ export default async function handler(
       await updateGameStatus(gameId, "completed", playerId);
 
       // Track game won with server-side analytics
-      const playerMessages = game.messages.filter(m => m.playerId === playerId);
+      const playerMessages = game.messages.filter(
+        (m) => m.playerId === playerId
+      );
       const totalAttempts = playerMessages.length + 1;
       const hintsUsed = game.hintsUsed || 0;
 
-      await track('game_won', {
-        game_mode: game.mode || 'friend',
+      await track("game_won", {
+        game_mode: game.mode || "friend",
         total_attempts: totalAttempts.toString(),
         hints_used: hintsUsed.toString(),
-        secret_word: game.secretWord
+        secret_word: game.secretWord,
       });
 
       return res.status(200).json({
@@ -178,15 +180,17 @@ export default async function handler(
         await updateGameStatus(gameId, "completed", "ai");
 
         // Track game lost with server-side analytics
-        const playerMessages = game.messages.filter(m => m.playerId === playerId);
+        const playerMessages = game.messages.filter(
+          (m) => m.playerId === playerId
+        );
         const totalAttempts = playerMessages.length + 1;
         const hintsUsed = game.hintsUsed || 0;
 
-        await track('game_lost', {
-          game_mode: 'ai',
+        await track("game_lost", {
+          game_mode: "ai",
           total_attempts: totalAttempts.toString(),
           hints_used: hintsUsed.toString(),
-          secret_word: game.secretWord
+          secret_word: game.secretWord,
         });
 
         return res.status(200).json({
@@ -350,7 +354,7 @@ async function generateAIQuestion(
   const formattedHistory = conversationHistory
     .map(
       (msg: GameMessage) =>
-        `${msg.playerId === "ai" ? "AI" : "Player"}: ${
+        `${msg.playerId === "ai" ? "You" : "Player"}: ${
           msg.content
         } → Response: ${msg.aiResponse}`
     )
@@ -358,19 +362,22 @@ async function generateAIQuestion(
 
   const { text } = await generateText({
     model: openai("gpt-5-nano"),
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      } satisfies OpenAIResponsesProviderOptions,
+    },
     system: `You are playing a word guessing game against a human. You need to ask yes/no questions to figure out the secret word.
 The human will either ask a question or make a guess each turn.
-
 After they go, it's now your turn to do the same. Your goal is to guess the secret word before they do.
-
-Use their questions (and the responses to them) to inform your next question.
-
-Also use your previous questions and guesses to inform your next guess/question.
+Always use all previous questions and answers, including both your own and the human's, to inform each next question or guess. Do not repeat questions that have already been asked. With each turn, strive to efficiently narrow down the set of possible answers by adapting your line of questioning to prior responses. It is crucial that you steer each question towards eliminating as many remaining categories or possibilities as possible, to avoid getting stuck or repeating ideas.
 
 Guidelines:
-- You probably want to start by asking broad question to narrow down the category.
-- As you gather more information, ask more specific questions to zero in on the word.
-- Once you feel confident, you can make a guess. To make a guess, just output the word without a question mark.
+- Begin with broad, high-impact, category-defining questions to quickly reduce large groups of possibilities.
+- Carefully choose each new question so it builds logically on previous answers and targets the most critical unknowns that will help differentiate between the remaining options.
+- Do not repeat previously asked questions or revisit already covered topics.
+- Make well-informed guesses only when you have enough evidence, outputting only the word (without a question mark).
+- Always prefer questions or guesses that most effectively help you converge on the solution faster.
 
 Previous conversation:
 ${formattedHistory || "No previous questions yet."}`,
