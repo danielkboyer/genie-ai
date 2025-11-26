@@ -257,7 +257,7 @@ export function GameChat({
     }
 
     setShowHintModal(false);
-    setPendingQuestion({ content: "Can you give me a hint?", type: "hint" });
+    setPendingQuestion({ content: "Requesting help...", type: "hint" });
     setLoading(true);
 
     try {
@@ -268,7 +268,7 @@ export function GameChat({
           gameId,
           playerId,
           type: "hint",
-          content: "Can you give me a hint?",
+          content: "help", // Content doesn't matter, backend generates the question
         }),
       });
 
@@ -277,7 +277,7 @@ export function GameChat({
       if (!response.ok) {
         setLoading(false);
         setPendingQuestion(null);
-        alert(data.error || "Failed to request hint");
+        alert(data.error || "Failed to request help");
       } else {
         // Track hint request
         const hintCount = messages.filter(m => m.playerId === playerId && m.type === "hint").length + 1;
@@ -290,8 +290,8 @@ export function GameChat({
     } catch (error) {
       setLoading(false);
       setPendingQuestion(null);
-      console.error("Error requesting hint:", error);
-      alert("Failed to request hint");
+      console.error("Error requesting help:", error);
+      alert("Failed to request help");
     }
   };
 
@@ -312,10 +312,10 @@ export function GameChat({
               className="text-lg font-semibold mb-3"
               style={{ color: colors.primary.main }}
             >
-              Request a Hint?
+              Get Help with a Question?
             </h3>
             <p className="text-gray-600 mb-4 text-sm">
-              Getting a hint will use your turn.
+              We will suggest a good question to ask. This will use your turn.
             </p>
             <div className="flex gap-2">
               <Button
@@ -336,7 +336,7 @@ export function GameChat({
                   (e.currentTarget.style.backgroundColor = colors.primary.main)
                 }
               >
-                Get Hint
+                Get Help
               </Button>
             </div>
           </div>
@@ -379,7 +379,7 @@ export function GameChat({
               <div className="relative z-10">
                 <div className="text-xs font-semibold mb-1 opacity-90">
                   {pendingQuestion.type === "hint"
-                    ? "Hint Request:"
+                    ? "Help Request:"
                     : pendingQuestion.type === "question"
                     ? "Question:"
                     : "Guess:"}
@@ -550,7 +550,7 @@ export function GameChat({
             </Button>
           </form>
 
-          {/* Hint button at bottom */}
+          {/* Help with question button at bottom */}
           <div className="mt-3 flex justify-center">
             <button
               onClick={() => setShowHintModal(true)}
@@ -558,7 +558,7 @@ export function GameChat({
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Lightbulb className="h-4 w-4" />
-              <span>Hint</span>
+              <span>Help me with a question</span>
             </button>
           </div>
 

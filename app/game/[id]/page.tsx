@@ -5,10 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { GameChat } from "@/components/GameChat";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Copy, Trophy, Clock, Share2 } from "lucide-react";
+import { Copy, Trophy, Clock, Share2, Flame, Target, TrendingUp } from "lucide-react";
 import { Game, GameMessage } from "@/lib/db-operations";
 import { colors } from "@/lib/colors";
 import { track } from '@vercel/analytics';
+import { recordGame, hasPlayedToday, getTodayGame, getPlayerStats, getAverageAttempts, getWinRate } from "@/lib/player-stats";
 
 function getTimeUntilNextWord(): string {
   const now = new Date();
@@ -56,19 +57,14 @@ export default function GamePage() {
       if (response.ok) {
         setGame(data.game);
 
-        // If game completed (win or loss), save to localStorage (Mountain Time)
+        // If game completed (win or loss), record stats
         if (data.game.status === "completed" && typeof window !== "undefined") {
-          const now = new Date();
-          const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-          const today = mountainTime.toISOString().split("T")[0];
-          localStorage.setItem("lastPlayedDate", today);
-          localStorage.setItem("lastPlayedGameId", gameId);
+          const playerMessages = data.game.messages?.filter((m: GameMessage) => m.playerId === playerId) || [];
+          const attempts = playerMessages.length;
+          const won = data.game.winnerId === playerId;
+          const hintsUsed = data.game.hintsUsed || 0;
 
-          // Also track if they won
-          if (data.game.winnerId === playerId) {
-            localStorage.setItem("lastWonDate", today);
-            localStorage.setItem("lastWonGameId", gameId);
-          }
+          recordGame(won, attempts, hintsUsed, gameId);
         }
       } else {
         alert(data.error || "Failed to load game");
@@ -112,16 +108,7 @@ export default function GamePage() {
     setGame((prev) => {
       if (!prev) return prev;
 
-      // If player won, save to localStorage (Mountain Time)
-      if (gameStatus === "completed" && winnerId === playerId && typeof window !== "undefined") {
-        const now = new Date();
-        const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-        const today = mountainTime.toISOString().split("T")[0];
-        localStorage.setItem("lastWonDate", today);
-        localStorage.setItem("lastWonGameId", gameId);
-      }
-
-      return {
+      const updatedGame = {
         ...prev,
         messages: [...(prev.messages || []), message],
         status: gameStatus as "active" | "completed",
@@ -129,6 +116,18 @@ export default function GamePage() {
         // In AI mode, keep the turn with the current player
         currentTurn: prev.mode === "ai" ? playerId : prev.currentTurn,
       };
+
+      // If player completed the game, record stats
+      if (gameStatus === "completed" && typeof window !== "undefined") {
+        const playerMessages = updatedGame.messages?.filter((m) => m.playerId === playerId) || [];
+        const attempts = playerMessages.length;
+        const won = winnerId === playerId;
+        const hintsUsed = prev.hintsUsed || 0;
+
+        recordGame(won, attempts, hintsUsed, gameId);
+      }
+
+      return updatedGame;
     });
   };
 
@@ -314,37 +313,76 @@ export default function GamePage() {
 
         {/* Game Result */}
         {isCompleted && (
-          <Card className="mb-4 border-2" style={{ borderColor: colors.primary.main }}>
-            <CardContent className="pt-6">
-              <div className="text-center space-y-3">
-                <Trophy className="h-12 w-12 mx-auto text-yellow-500" />
-                <h2 className="text-2xl font-bold">
-                  {isWinner ? "You Won!" : "You Lost!"}
-                </h2>
-                <p className="text-gray-600">
-                  The secret word was:{" "}
-                  <span className="font-bold" style={{ color: colors.primary.main }}>
-                    {game.secretWord}
-                  </span>
-                </p>
-                <Button
-                  onClick={handleShare}
-                  className="mt-4 text-white shadow-md hover:shadow-lg transition-all"
-                  style={{ backgroundColor: colors.primary.main }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primary.hover}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary.main}
-                >
-                  <Share2 className="h-4 w-4 mr-2" />
-                  {shared ? "Copied!" : "Share Result"}
-                </Button>
-                <div className="pt-2 border-t border-gray-200 mt-4">
-                  <p className="text-sm text-gray-500">
-                    Next word in: <span className="font-semibold" style={{ color: colors.primary.main }}>{timeUntilNext}</span>
+          <>
+            <Card className="mb-4 border-2" style={{ borderColor: colors.primary.main }}>
+              <CardContent className="pt-6">
+                <div className="text-center space-y-3">
+                  <Trophy className="h-12 w-12 mx-auto text-yellow-500" />
+                  <h2 className="text-2xl font-bold">
+                    {isWinner ? "You Won!" : "You Lost!"}
+                  </h2>
+                  <p className="text-gray-600">
+                    The secret word was:{" "}
+                    <span className="font-bold" style={{ color: colors.primary.main }}>
+                      {game.secretWord}
+                    </span>
                   </p>
+                  <Button
+                    onClick={handleShare}
+                    className="mt-4 text-white shadow-md hover:shadow-lg transition-all"
+                    style={{ backgroundColor: colors.primary.main }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primary.hover}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary.main}
+                  >
+                    <Share2 className="h-4 w-4 mr-2" />
+                    {shared ? "Copied!" : "Share Result"}
+                  </Button>
+                  <div className="pt-2 border-t border-gray-200 mt-4">
+                    <p className="text-sm text-gray-500">
+                      Next word in: <span className="font-semibold" style={{ color: colors.primary.main }}>{timeUntilNext}</span>
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* Statistics Display */}
+            {(() => {
+              const stats = getPlayerStats();
+              return stats.totalGamesPlayed > 0 ? (
+                <Card className="mb-4">
+                  <CardContent className="pt-6">
+                    <h3 className="text-lg font-semibold mb-3 text-center" style={{ color: colors.primary.main }}>
+                      Your Statistics
+                    </h3>
+                    <div className="grid grid-cols-3 gap-3 p-4 bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border-2" style={{ borderColor: colors.primary.lighter }}>
+                      <div className="flex flex-col items-center">
+                        <Flame className="h-5 w-5 mb-1" style={{ color: colors.primary.main }} />
+                        <div className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                          {stats.currentStreak}
+                        </div>
+                        <div className="text-xs text-gray-600">Current Streak</div>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <Target className="h-5 w-5 mb-1" style={{ color: colors.primary.main }} />
+                        <div className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                          {getAverageAttempts()}
+                        </div>
+                        <div className="text-xs text-gray-600">Avg Attempts</div>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <TrendingUp className="h-5 w-5 mb-1" style={{ color: colors.primary.main }} />
+                        <div className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                          {getWinRate()}%
+                        </div>
+                        <div className="text-xs text-gray-600">Win Rate</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()}
+          </>
         )}
 
         {/* Chat */}

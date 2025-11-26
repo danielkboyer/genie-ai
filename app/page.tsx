@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Trophy, Share2 } from "lucide-react";
+import { Trophy, Share2, Flame, Target, TrendingUp } from "lucide-react";
 import Image from "next/image";
 import { colors } from "@/lib/colors";
 import { track } from '@vercel/analytics';
+import { hasPlayedToday, getTodayGame, getPlayerStats, getAverageAttempts, getWinRate, PlayerStats } from "@/lib/player-stats";
 
 function getTimeUntilNextWord(): string {
   const now = new Date();
@@ -46,46 +47,43 @@ export default function Home() {
     }
     return "";
   });
-  const [hasWonToday, setHasWonToday] = useState(false);
+  const [hasPlayedTodayState, setHasPlayedTodayState] = useState(false);
   const [todayGameId, setTodayGameId] = useState<string | null>(null);
   const [timeUntilNext, setTimeUntilNext] = useState(getTimeUntilNextWord());
   const [shared, setShared] = useState(false);
   const [didWin, setDidWin] = useState(false);
   const [attemptCount, setAttemptCount] = useState<number>(0);
+  const [hintsUsed, setHintsUsed] = useState<number>(0);
+  const [stats, setStats] = useState<PlayerStats>({
+    currentStreak: 0,
+    longestStreak: 0,
+    totalGamesPlayed: 0,
+    totalGamesWon: 0,
+    totalAttempts: 0,
+    lastPlayedDate: null,
+    gamesHistory: [],
+  });
 
   useEffect(() => {
-    // Check if user has played today (Mountain Time)
-    const fetchGameData = async () => {
-      if (typeof window !== "undefined") {
-        const now = new Date();
-        const mountainTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-        const today = mountainTime.toISOString().split("T")[0];
-        const playedDate = localStorage.getItem("lastPlayedDate");
-        const wonDate = localStorage.getItem("lastWonDate");
-        const gameId = localStorage.getItem("lastPlayedGameId");
+    // Check if user has played today using new stats system
+    if (typeof window !== "undefined") {
+      const playedToday = hasPlayedToday();
+      setHasPlayedTodayState(playedToday);
 
-        if (playedDate === today && gameId) {
-          setHasWonToday(true);
-          setTodayGameId(gameId);
-          setDidWin(wonDate === today);
-
-          // Fetch game data to get attempt count
-          try {
-            const response = await fetch(`/api/game/${gameId}`);
-            const data = await response.json();
-            if (response.ok && data.game) {
-              const playerMessages = data.game.messages?.filter((m: any) => m.playerId === playerId) || [];
-              setAttemptCount(playerMessages.length);
-            }
-          } catch (error) {
-            console.error("Error fetching game data:", error);
-          }
+      if (playedToday) {
+        const todayGame = getTodayGame();
+        if (todayGame) {
+          setTodayGameId(todayGame.gameId);
+          setDidWin(todayGame.won);
+          setAttemptCount(todayGame.attempts);
+          setHintsUsed(todayGame.hintsUsed);
         }
       }
-    };
 
-    fetchGameData();
-  }, [playerId]);
+      // Refresh stats
+      setStats(getPlayerStats());
+    }
+  }, []);
 
   // Update countdown timer every minute
   useEffect(() => {
@@ -182,7 +180,8 @@ export default function Home() {
     const currentMT = new Date(mountainTime.getFullYear(), mountainTime.getMonth(), mountainTime.getDate());
     const daysSinceStart = Math.floor((currentMT.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
-    const shareText = `The Secret Word #${daysSinceStart}\n${didWin ? '🏆 Won!' : '❌ Lost'} in ${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}\n\nhttps://secretword.xyz`;
+    const hintText = hintsUsed > 0 ? ` (${hintsUsed} ${hintsUsed === 1 ? 'help' : 'helps'})` : '';
+    const shareText = `The Secret Word #${daysSinceStart}\n${didWin ? '🏆 Won!' : '❌ Lost'} in ${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}${hintText}\n\nhttps://secretword.xyz`;
 
     track('result_shared', {
       won: didWin,
@@ -245,7 +244,34 @@ export default function Home() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {hasWonToday ? (
+          {/* Statistics Display */}
+          {stats.totalGamesPlayed > 0 && (
+            <div className="grid grid-cols-3 gap-3 p-4 bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border-2" style={{ borderColor: colors.primary.lighter }}>
+              <div className="flex flex-col items-center">
+                <Flame className="h-5 w-5 mb-1" style={{ color: colors.primary.main }} />
+                <div className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                  {stats.currentStreak}
+                </div>
+                <div className="text-xs text-gray-600">Current Streak</div>
+              </div>
+              <div className="flex flex-col items-center">
+                <Target className="h-5 w-5 mb-1" style={{ color: colors.primary.main }} />
+                <div className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                  {getAverageAttempts()}
+                </div>
+                <div className="text-xs text-gray-600">Avg Attempts</div>
+              </div>
+              <div className="flex flex-col items-center">
+                <TrendingUp className="h-5 w-5 mb-1" style={{ color: colors.primary.main }} />
+                <div className="text-2xl font-bold" style={{ color: colors.primary.main }}>
+                  {getWinRate()}%
+                </div>
+                <div className="text-xs text-gray-600">Win Rate</div>
+              </div>
+            </div>
+          )}
+
+          {hasPlayedTodayState ? (
             <>
               <div className="text-center py-6 space-y-4">
                 <Trophy className="h-16 w-16 mx-auto text-yellow-500" />

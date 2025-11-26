@@ -58,27 +58,127 @@ export default async function handler(
     let isCorrectGuess = false;
 
     if (type === "hint") {
-      // Handle hint request
+      // Handle help request - generate a suggested question
       // Get all previous player messages and hints for context
       const playerMessages = game.messages.filter(
         (m) => m.playerId === playerId
       );
       const previousHints = game.messages
         .filter((m) => m.type === "hint" && m.playerId === playerId)
-        .map((m) => m.aiResponse || "")
+        .map((m) => m.content || "")
         .filter((h) => h !== "");
 
-      // Generate a hint based on conversation history and previous hints
-      const hint = await generateHint(
+      // Generate a suggested question based on conversation history
+      const suggestedQuestion = await generateHint(
         secretWord,
         playerMessages,
         previousHints
       );
 
-      // Store just the hint
-      aiResponse = hint;
+      // The user's message content should be the suggested question
+      // And the AI response should be yes/no answer to that question
+      const messageContent = suggestedQuestion;
+      aiResponse = await generateGameAIResponse(suggestedQuestion, secretWord);
 
       await incrementHintsUsed(gameId);
+
+      // Create and add the message with the suggested question as content
+      const hintMessage: GameMessage = {
+        id: generateId(),
+        type: "hint",
+        content: messageContent,
+        aiResponse,
+        playerId,
+        timestamp: Date.now(),
+      };
+
+      await addMessage(gameId, hintMessage);
+
+      // Don't switch turns in AI mode, switch in friend mode
+      if (game.mode === "ai") {
+        // In AI mode, generate AI's turn immediately (same as below)
+        const aiQuestion = await generateAIQuestion([
+          ...game.messages,
+          hintMessage,
+        ]);
+        const aiIsGuessing = !aiQuestion.includes("?");
+        const aiType = aiIsGuessing ? "guess" : "question";
+
+        const aiQuestionMessage: GameMessage = {
+          id: generateId(),
+          type: aiType,
+          content: aiQuestion,
+          aiResponse: undefined,
+          playerId: "ai",
+          timestamp: Date.now(),
+        };
+
+        await addMessage(gameId, aiQuestionMessage);
+
+        let aiAiResponse: string | undefined;
+        let aiCorrectGuess = false;
+
+        if (aiType === "guess") {
+          const aiGuessWord = aiQuestion.trim();
+          aiCorrectGuess =
+            aiGuessWord.toLowerCase() === secretWord.toLowerCase();
+          aiAiResponse = aiCorrectGuess ? "Correct!" : "Incorrect!";
+        } else {
+          aiAiResponse = await generateGameAIResponse(aiQuestion, secretWord);
+        }
+
+        await updateMessageResponse(aiQuestionMessage.id, aiAiResponse);
+
+        const aiMessage = {
+          ...aiQuestionMessage,
+          aiResponse: aiAiResponse,
+        };
+
+        if (aiCorrectGuess) {
+          await updateGameStatus(gameId, "completed", "ai");
+
+          const playerMessages = game.messages.filter(
+            (m) => m.playerId === playerId
+          );
+          const totalAttempts = playerMessages.length + 1;
+          const hintsUsed = game.hintsUsed || 0;
+
+          await track("game_lost", {
+            game_mode: "ai",
+            total_attempts: totalAttempts.toString(),
+            hints_used: hintsUsed.toString(),
+            secret_word: game.secretWord,
+          });
+
+          return res.status(200).json({
+            message: hintMessage,
+            aiMessage,
+            gameStatus: "completed",
+            winnerId: "ai",
+          });
+        }
+
+        await updateTurn(gameId, playerId);
+
+        return res.status(200).json({
+          message: hintMessage,
+          aiMessage,
+          gameStatus: "active",
+        });
+      } else {
+        // Friend mode - switch turns
+        const nextPlayer =
+          playerId === game.player1Id ? game.player2Id : game.player1Id;
+        if (nextPlayer) {
+          await updateTurn(gameId, nextPlayer);
+        }
+
+        return res.status(200).json({
+          message: hintMessage,
+          aiMessage: null,
+          gameStatus: "active",
+        });
+      }
     } else if (type === "guess") {
       // Check if guess is correct (remove trailing punctuation like ?)
       const cleanedGuess = content
@@ -389,7 +489,7 @@ ${formattedHistory || "No previous questions yet."}`,
   return text.trim();
 }
 
-// Generate a hint based on conversation history
+// Generate a helpful question suggestion based on conversation history
 async function generateHint(
   secretWord: string,
   playerMessages: GameMessage[],
@@ -405,7 +505,7 @@ async function generateHint(
       (msg: GameMessage) =>
         `${
           msg.type === "hint"
-            ? "Hint Request"
+            ? "Help Request"
             : msg.type === "guess"
             ? "Guess"
             : "Question"
@@ -413,35 +513,20 @@ async function generateHint(
     )
     .join("\n");
 
-  const formattedPreviousHints =
-    previousHints.length > 0
-      ? `Previous riddles given:\n${previousHints
-          .map((h, i) => `${i + 1}. ${h}`)
-          .join("\n")}`
-      : "No previous riddles given.";
-
   const { text } = await generateText({
     model: openai("gpt-5-nano"),
     system: `You are helping a player in a word guessing game. The secret word is "${secretWord}".
 
-The player has asked for a hint. Your job is to provide an obtuse riddle that barely helps them get closer to the secret word. 
+The player has asked for help with formulating a good question. Your job is to suggest a strategic yes/no question that will help them slightly narrow down the secret word.
 
-The riddle must be very very subtle and sometimes even cryptic.
+The most important part when suggesting a question is to make sure it's not too specific, it should be very broad but still help them.
 
-Guidelines for riddles:
-- DO NOT say the secret word or any part of it
-- Keep riddles concise (1 sentence max but hopefully just a few words)
-- Consider what they already know from their questions and answers, sometimes playing off of that.
-- If the secret word is already in one of the previous questions, you should make the riddle be "The secret word was already mentioned in a question". Only do this riddles once if applicable.
-- You should be riddle like with the hint if possible.
-
-**Important**
-- riddles should be very subtle and usually not let them figure it out right away.
-${formattedPreviousHints}
+Whatever you respond with will be used right away as the players question, it must be clear and concise and NEVER include the secret word.
 
 Conversation history:
 ${formattedHistory || "No questions asked yet."}`,
-    prompt: "Provide a riddle based on the above guidelines.",
+    prompt:
+      "Suggest a strategic yes/no question that would help them slightly narrow down the secret word.",
     maxRetries: 2,
   });
 
@@ -450,34 +535,15 @@ ${formattedHistory || "No questions asked yet."}`,
 
 // Mock hint generator for testing without OpenAI
 function getMockHint(secretWord: string, previousHints: string[]): string {
-  const hintCount = previousHints.length;
-
-  // Define hints for common words
-  const hints: Record<string, string[]> = {
-    computer: [
-      "It's an electronic device commonly found in homes and offices.",
-      "People use it for work, entertainment, and communication.",
-      "It has a keyboard and screen.",
-    ],
-    elephant: [
-      "It's the largest land animal.",
-      "It has a long trunk.",
-      "It's native to Africa and Asia.",
-    ],
-    pizza: [
-      "It's a popular food item.",
-      "It usually has cheese and tomato sauce.",
-      "It's often cut into triangular slices.",
-    ],
-  };
-
-  const wordHints = hints[secretWord.toLowerCase()] || [
-    "Think about common everyday things.",
-    "Consider its main purpose or use.",
-    "What category does it belong to?",
+  const questions = [
+    "Is it something you can physically touch?",
+    "Is it related to technology?",
+    "Is it larger than a basketball?",
+    "Is it commonly found indoors?",
+    "Does it have moving parts?",
   ];
 
-  return wordHints[Math.min(hintCount, wordHints.length - 1)];
+  return questions[Math.min(previousHints.length, questions.length - 1)];
 }
 
 // Mock AI question generator for testing without OpenAI
